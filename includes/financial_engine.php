@@ -563,10 +563,12 @@ class FinancialEngine {
                 return ['success' => false, 'error' => "Receipt amount must be greater than zero."];
             }
 
+            $is_retained = !empty($data['is_retained']) ? 1 : 0;
+
             $stmt = $db->prepare("
                 INSERT INTO owner_share_receipts 
-                (user_id, business_id, account_id, financial_month, amount, receipt_date, payment_method, reference_no, notes)
-                VALUES (:uid, :bid, :aid, :month, :amt, :rdate, :method, :ref, :notes)
+                (user_id, business_id, account_id, financial_month, amount, is_retained, receipt_date, payment_method, reference_no, notes)
+                VALUES (:uid, :bid, :aid, :month, :amt, :retained, :rdate, :method, :ref, :notes)
             ");
             $stmt->execute([
                 'uid' => $user_id,
@@ -574,6 +576,7 @@ class FinancialEngine {
                 'aid' => $account_id,
                 'month' => $month,
                 'amt' => $amount,
+                'retained' => $is_retained,
                 'rdate' => $receipt_date,
                 'method' => $method,
                 'ref' => $ref,
@@ -581,7 +584,7 @@ class FinancialEngine {
             ]);
             $receipt_id = $db->lastInsertId();
 
-            if ($account_id) {
+            if ($account_id && !$is_retained) {
                 self::recordAccountInflow($account_id, $amount, 'owner_receipt', 'owner_share_receipts', $receipt_id, $receipt_date, $ref, "Business profit share receipt from Business #$business_id", $user_id);
             }
 
@@ -619,7 +622,8 @@ class FinancialEngine {
         ]);
 
         $upd = $db->prepare("UPDATE accounts SET current_balance = current_balance + :amt, updated_at = NOW() WHERE id = :aid");
-        $upd->execute(['amt' => $amount, 'aid' => $account_id]);
+        $upd->execute(['amt' => $amount,
+'aid' => $account_id]);
     }
 
     /**
@@ -647,7 +651,8 @@ class FinancialEngine {
         ]);
 
         $upd = $db->prepare("UPDATE accounts SET current_balance = current_balance - :amt, updated_at = NOW() WHERE id = :aid");
-        $upd->execute(['amt' => $amount, 'aid' => $account_id]);
+        $upd->execute(['amt' => $amount,
+'aid' => $account_id]);
     }
 
     /**
@@ -708,9 +713,11 @@ class FinancialEngine {
                 SELECT financial_month FROM profit_distributions WHERE business_id = :bid1 AND partner_id = :pid1
                 UNION
                 SELECT financial_month FROM partner_payments WHERE business_id = :bid2 AND partner_id = :pid2 AND is_deleted = 0
-            ) as m ORDER BY financial_month ASC
+                UNION
+                SELECT financial_month FROM business_income WHERE business_id = :bid3 AND is_deleted = 0
+            ) as m WHERE financial_month IS NOT NULL AND financial_month != '' ORDER BY financial_month ASC
         ");
-        $stmt->execute(['bid1' => $business_id, 'pid1' => $partner_id, 'bid2' => $business_id, 'pid2' => $partner_id]);
+        $stmt->execute(['bid1' => $business_id, 'pid1' => $partner_id, 'bid2' => $business_id, 'pid2' => $partner_id, 'bid3' => $business_id]);
         $months = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         $running_balance = 0.00;
@@ -719,6 +726,17 @@ class FinancialEngine {
             $estmt = $db->prepare("SELECT COALESCE(SUM(share_amount), 0.00) FROM profit_distributions WHERE business_id = :bid AND partner_id = :pid AND financial_month = :m");
             $estmt->execute(['bid' => $business_id, 'pid' => $partner_id, 'm' => $month]);
             $earned = (float)$estmt->fetchColumn();
+
+            // If not finalized, calculate live earned share from monthly revenue minus expenses
+            if ($earned == 0.00) {
+                $summary = self::getMonthlySummary($business_id, $month);
+                foreach ($summary['distributions'] as $d) {
+                    if (!$d['is_owner'] && (int)$d['partner_id'] === (int)$partner_id) {
+                        $earned = (float)$d['share_amount'];
+                        break;
+                    }
+                }
+            }
 
             // Paid
             $pstmt = $db->prepare("SELECT COALESCE(SUM(amount), 0.00) FROM partner_payments WHERE business_id = :bid AND partner_id = :pid AND financial_month = :m AND is_deleted = 0");
@@ -821,16 +839,52 @@ class FinancialEngine {
         $stmt->execute(['uid' => $user_id, 'sm' => $start_m, 'em' => $end_m]);
         $owner_share_earned = (float)$stmt->fetchColumn();
 
+        // PLUS check unfinalized active months in the period to show real-time earned share
+        $unfin_stmt = $db->prepare("
+            SELECT b.id as business_id, b.collection_model, bi.financial_month
+            FROM businesses b
+            JOIN business_income bi ON b.id = bi.business_id AND bi.is_deleted = 0
+            LEFT JOIN monthly_closings mc ON b.id = mc.business_id AND bi.financial_month = mc.financial_month AND mc.status = 'finalized'
+            WHERE b.user_id = :uid AND mc.id IS NULL AND (bi.financial_month BETWEEN :sm AND :em)
+            GROUP BY b.id, bi.financial_month
+        ");
+        $unfin_stmt->execute(['uid' => $user_id, 'sm' => $start_m, 'em' => $end_m]);
+        $unfin_months = $unfin_stmt->fetchAll();
+
+        $direct_owner_retained = 0.00;
+        foreach ($unfin_months as $um) {
+            $summary = self::getMonthlySummary($um['business_id'], $um['financial_month']);
+            foreach ($summary['distributions'] as $d) {
+                if ($d['is_owner']) {
+                    $owner_share_earned += (float)$d['share_amount'];
+                    if (($um['collection_model'] ?? 'direct') === 'direct') {
+                        $direct_owner_retained += (float)$d['share_amount'];
+                    }
+                    break;
+                }
+            }
+        }
+
         // 4. Owner Business Share Actually Received
+        // For direct collection businesses, user directly collects all revenue in their cash/bank accounts,
+        // so their share is automatically retained in their account.
         $stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0.00) FROM owner_share_receipts WHERE user_id = :uid AND receipt_date BETWEEN :s AND :e AND is_deleted = 0");
         $stmt->execute(['uid' => $user_id, 's' => $start_date, 'e' => $end_date]);
-        $owner_share_received = (float)$stmt->fetchColumn();
+        $recorded_owner_received = (float)$stmt->fetchColumn();
+        $owner_share_received = max($recorded_owner_received, $direct_owner_retained);
 
-        // All-time pending business receivables for owner
+        // All-time pending business receivables for owner (only for external businesses where partner owes user)
         $stmt = $db->prepare("
             SELECT 
-              (SELECT COALESCE(SUM(share_amount), 0.00) FROM profit_distributions pd JOIN monthly_closings mc ON pd.monthly_closing_id = mc.id WHERE mc.user_id = :uid AND pd.partner_id IS NULL) -
-              (SELECT COALESCE(SUM(amount), 0.00) FROM owner_share_receipts WHERE user_id = :uid2 AND is_deleted = 0)
+              (SELECT COALESCE(SUM(pd.share_amount), 0.00) 
+               FROM profit_distributions pd 
+               JOIN monthly_closings mc ON pd.monthly_closing_id = mc.id 
+               JOIN businesses b ON pd.business_id = b.id
+               WHERE mc.user_id = :uid AND pd.partner_id IS NULL AND b.collection_model = 'external') -
+              (SELECT COALESCE(SUM(osr.amount), 0.00) 
+               FROM owner_share_receipts osr 
+               JOIN businesses b2 ON osr.business_id = b2.id
+               WHERE osr.user_id = :uid2 AND osr.is_deleted = 0 AND b2.collection_model = 'external')
         ");
         $stmt->execute(['uid' => $user_id, 'uid2' => $user_id]);
         $pending_receivables = max(0.00, (float)$stmt->fetchColumn());
@@ -861,13 +915,12 @@ class FinancialEngine {
         // 10. Partner Outstanding Payables (Total unpaid to partners)
         $stmt = $db->prepare("
             SELECT COALESCE(SUM(closing_balance), 0.00) 
-            FROM (
-                SELECT partner_id, closing_balance 
-                FROM partner_earnings pe1
-                WHERE id IN (
-                    SELECT MAX(id) FROM partner_earnings WHERE user_id = :uid GROUP BY business_id, partner_id
-                )
-            ) as latest_pe
+            FROM partner_earnings pe1
+            WHERE pe1.user_id = :uid AND pe1.financial_month = (
+                SELECT MAX(pe2.financial_month) 
+                FROM partner_earnings pe2 
+                WHERE pe2.business_id = pe1.business_id AND pe2.partner_id = pe1.partner_id
+            )
         ");
         $stmt->execute(['uid' => $user_id]);
         $partner_pending_payables = (float)$stmt->fetchColumn();

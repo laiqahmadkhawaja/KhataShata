@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         $start_date = trim($_POST['start_date'] ?? '');
         $ownership_type = trim($_POST['ownership_type'] ?? 'Partnership');
+        $collection_model = trim($_POST['collection_model'] ?? 'direct');
         $status = trim($_POST['status'] ?? 'Active');
         $notes = trim($_POST['notes'] ?? '');
 
@@ -53,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $upd = $db->prepare("
                 UPDATE businesses 
                 SET name = :name, category_id = :cat, description = :desc, logo = :logo, 
-                    start_date = :sdate, ownership_type = :otype, status = :status, notes = :notes, updated_at = NOW()
+                    start_date = :sdate, ownership_type = :otype, collection_model = :cmodel, status = :status, notes = :notes, updated_at = NOW()
                 WHERE id = :id AND user_id = :uid
             ");
             $upd->execute([
@@ -63,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'logo' => $logo_path,
                 'sdate' => $start_date,
                 'otype' => $ownership_type,
+                'cmodel' => $collection_model,
                 'status' => $status,
                 'notes' => $notes,
                 'id' => $business_id,
@@ -126,7 +128,16 @@ require_once ROOT_PATH . '/includes/header.php';
         </div>
       </div>
 
-      <div class="form-grid">
+      <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label">Collection & Revenue Model <span class="req">*</span></label>
+          <select name="collection_model" class="form-control" required>
+            <option value="direct" <?= ($business['collection_model'] ?? 'direct') === 'direct' ? 'selected' : '' ?>>🏢 Direct Collection (آپ خود 100% رقم وصول کرتے ہیں، پارٹنر کو اس کا حصہ دیتے ہیں)</option>
+            <option value="external" <?= ($business['collection_model'] ?? '') === 'external' ? 'selected' : '' ?>>🤝 External Partnership (پارٹنر یا بیرونی ادارہ رقم وصول کرتا ہے، آپ کو صرف آپ کا شیئر ملتا ہے)</option>
+          </select>
+          <div class="form-text">Direct Collection: Client payments arrive directly in your accounts (e.g. SaaS). External: Partner collects, you receive profit draws.</div>
+        </div>
+
+        <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Business Start Date <span class="req">*</span></label>
           <input type="date" name="start_date" class="form-control" required value="<?= htmlspecialchars($_POST['start_date'] ?? $business['start_date']) ?>">

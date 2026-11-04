@@ -30,6 +30,17 @@ $b_stmt = $db->prepare("SELECT id, name FROM businesses WHERE user_id = :uid AND
 $b_stmt->execute(['uid' => $user['id']]);
 $all_businesses = $b_stmt->fetchAll();
 
+// Sync latest partner earnings
+if ($partner_id > 0) {
+    if ($business_id > 0) {
+        FinancialEngine::syncPartnerEarnings($business_id, $partner_id);
+    } else {
+        foreach ($all_businesses as $ab) {
+            FinancialEngine::syncPartnerEarnings($ab['id'], $partner_id);
+        }
+    }
+}
+
 // Partner earnings query
 $pe_sql = "
     SELECT pe.*, b.name as business_name

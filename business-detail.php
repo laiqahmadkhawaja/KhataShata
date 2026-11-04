@@ -106,16 +106,25 @@ $exp_stmt->execute(['bid' => $business_id]);
 $lifetime_exp = (float)$exp_stmt->fetchColumn();
 $lifetime_profit = round($lifetime_rev - $lifetime_exp, 2);
 
-// Lifetime Owner Share Earned from this business
-$oe_stmt = $db->prepare("SELECT COALESCE(SUM(share_amount), 0.00) FROM profit_distributions WHERE business_id = :bid AND partner_id IS NULL");
-$oe_stmt->execute(['bid' => $business_id]);
-$lifetime_owner_earned = (float)$oe_stmt->fetchColumn();
+// Lifetime Owner Share
+if (($business['collection_model'] ?? 'direct') === 'direct') {
+    $owner_pct = 60.0;
+    foreach ($participants as $p) {
+        if ($p['is_owner']) { $owner_pct = (float)$p['percentage']; break; }
+    }
+    $lifetime_owner_earned = round($lifetime_profit * ($owner_pct / 100), 2);
+    $lifetime_owner_received = $lifetime_owner_earned;
+    $pending_owner_receivable = 0.00;
+} else {
+    $oe_stmt = $db->prepare("SELECT COALESCE(SUM(share_amount), 0.00) FROM profit_distributions WHERE business_id = :bid AND partner_id IS NULL");
+    $oe_stmt->execute(['bid' => $business_id]);
+    $lifetime_owner_earned = (float)$oe_stmt->fetchColumn();
 
-// Lifetime Owner Share Received from this business
-$or_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0.00) FROM owner_share_receipts WHERE business_id = :bid AND is_deleted = 0");
-$or_stmt->execute(['bid' => $business_id]);
-$lifetime_owner_received = (float)$or_stmt->fetchColumn();
-$pending_owner_receivable = max(0.00, round($lifetime_owner_earned - $lifetime_owner_received, 2));
+    $or_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0.00) FROM owner_share_receipts WHERE business_id = :bid AND is_deleted = 0");
+    $or_stmt->execute(['bid' => $business_id]);
+    $lifetime_owner_received = (float)$or_stmt->fetchColumn();
+    $pending_owner_receivable = max(0.00, round($lifetime_owner_earned - $lifetime_owner_received, 2));
+}
 
 // 5. Recent Business Income
 $inc_stmt = $db->prepare("
@@ -586,8 +595,16 @@ require_once ROOT_PATH . '/includes/header.php';
             <?php foreach ($recent_incomes as $inc): ?>
               <tr>
                 <td data-label="Title">
-                  <strong><?= htmlspecialchars($inc['title']) ?></strong>
-                  <div style="font-size: 11px; color: var(--text-muted);"><?= htmlspecialchars($inc['reference_no'] ?? '-') ?></div>
+                  <div style="font-weight: 700;"><?= htmlspecialchars($inc['title']) ?></div>
+                  <?php if (!empty($inc['client_name'])): ?>
+                    <div style="font-size: 11.5px; color: var(--primary); font-weight: 600;">👤 <?= htmlspecialchars($inc['client_name']) ?></div>
+                  <?php endif; ?>
+                  <div style="font-size: 11px; color: var(--text-muted);">
+                    Ref: <?= htmlspecialchars($inc['reference_no'] ?? '-') ?>
+                    <?php if (!empty($inc['payment_type'])): ?>
+                      &bull; <span class="badge badge-neutral" style="font-size: 10px;"><?= ucfirst($inc['payment_type']) ?></span>
+                    <?php endif; ?>
+                  </div>
                 </td>
                 <td data-label="Category"><?= htmlspecialchars($inc['category_name'] ?? 'General') ?></td>
                 <td data-label="Month"><span class="badge badge-neutral"><?= htmlspecialchars($inc['financial_month']) ?></span></td>
