@@ -1,0 +1,11 @@
+# KhataShata .gitignore
+error.log
+backups/*.sql
+!backups/.gitkeep
+uploads/receipts/*
+!uploads/receipts/.gitkeep
+uploads/businesses/*
+!uploads/businesses/.gitkeep
+uploads/documents/*
+!uploads/documents/.gitkeep
+tests/cookie.txt
