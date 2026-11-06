@@ -186,6 +186,17 @@ $hist_stmt = $db->prepare("
 $hist_stmt->execute(['bid' => $business_id]);
 $ownership_history = $hist_stmt->fetchAll();
 
+// 10. Client Deals (SaaS / Software Breakdown)
+$deals_q = $db->prepare("
+    SELECT cd.*, p.name as partner_name
+    FROM client_deals cd
+    LEFT JOIN partners p ON cd.partner_id = p.id
+    WHERE cd.business_id = :bid AND cd.user_id = :uid AND cd.is_deleted = 0
+    ORDER BY cd.id ASC
+");
+$deals_q->execute(['bid' => $business_id, 'uid' => $user['id']]);
+$client_deals = $deals_q->fetchAll();
+
 $page_title = $business['name'] . ' - Business Hub';
 $active_nav = 'businesses';
 
@@ -222,6 +233,9 @@ require_once ROOT_PATH . '/includes/header.php';
 
     <!-- Quick Action Buttons -->
     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+      <a href="<?= BASE_URL ?>/saas-deals.php?business_id=<?= $business['id'] ?>" class="btn btn-primary btn-sm" style="background:#4f46e5; border-color:#4338ca;">
+        📊 Software Deals
+      </a>
       <a href="<?= BASE_URL ?>/business-income-create.php?business_id=<?= $business['id'] ?>" class="btn btn-success btn-sm">
         + Add <?= ($business['collection_model'] ?? '') === 'job' ? 'Salary' : 'Revenue' ?>
       </a>
@@ -242,6 +256,9 @@ require_once ROOT_PATH . '/includes/header.php';
 <div class="nav-tabs">
   <a href="?id=<?= $business_id ?>&tab=overview" class="nav-tab-item <?= $active_tab === 'overview' ? 'active' : '' ?>">
     Overview
+  </a>
+  <a href="<?= BASE_URL ?>/saas-deals.php?business_id=<?= $business_id ?>" class="nav-tab-item">
+    📊 Software Deals (<?= count($client_deals) ?>)
   </a>
   <a href="?id=<?= $business_id ?>&tab=partners" class="nav-tab-item <?= $active_tab === 'partners' ? 'active' : '' ?>">
     Partners & Ownership
@@ -362,6 +379,40 @@ require_once ROOT_PATH . '/includes/header.php';
       </div>
     </div>
   </div>
+
+  <?php if (!empty($client_deals)): ?>
+    <!-- Software Deals Quick Spotlight -->
+    <div class="card" style="border-left: 4px solid var(--primary); padding: 18px 20px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+        <div>
+          <div style="font-weight: 800; font-size: 15px; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+            <span>📊 Software & Client Deals Breakdown</span>
+            <span class="badge badge-primary"><?= count($client_deals) ?> active deals</span>
+          </div>
+          <div style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+            Client-by-client contract values, collected advance, monthly retainers, and partner splits.
+          </div>
+        </div>
+        <a href="<?= BASE_URL ?>/saas-deals.php?business_id=<?= $business_id ?>" class="btn btn-primary btn-sm">
+          Open Full Spreadsheet View &rarr;
+        </a>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+        <?php foreach (array_slice($client_deals, 0, 3) as $cd): 
+          $c_rem = max(0.00, (float)$cd['total_amount'] - ((float)$cd['advance_amount'] + (float)$cd['client_paid_amount']));
+        ?>
+          <div style="background: var(--bg-hover); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="font-weight: 700; font-size: 13px; color: var(--text-main);"><?= htmlspecialchars($cd['client_name']) ?></div>
+            <div style="font-size: 11px; color: var(--text-muted);"><?= htmlspecialchars($cd['software_type']) ?> &bull; Total: <?= format_money($cd['total_amount']) ?></div>
+            <div style="font-size: 11.5px; margin-top: 4px; display:flex; justify-content:space-between;">
+              <span style="color:var(--success-dark); font-weight:600;">Paid: <?= format_money($cd['advance_amount'] + $cd['client_paid_amount']) ?></span>
+              <span style="color:#b45309; font-weight:600;">Rem: <?= format_money($c_rem) ?></span>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 
   <!-- Ownership Composition Bar -->
   <div class="card">

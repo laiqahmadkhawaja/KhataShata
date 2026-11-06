@@ -576,3 +576,48 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   KEY `idx_audit_user` (`user_id`),
   KEY `idx_audit_type_id` (`record_type`, `record_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ==========================================
+-- 23. CLIENT SOFTWARE DEALS & BREAKDOWN
+-- ==========================================
+CREATE TABLE IF NOT EXISTS `client_deals` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `business_id` INT NOT NULL,
+  `partner_id` INT DEFAULT NULL,
+  `client_name` VARCHAR(150) NOT NULL,
+  `software_type` VARCHAR(100) NOT NULL,
+  `total_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  `advance_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  `client_paid_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  `monthly_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  `partner_cut_pct` DECIMAL(5,2) NOT NULL DEFAULT 40.00,
+  `partner_paid_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  `start_date` DATE DEFAULT NULL,
+  `status` ENUM('Active', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Active',
+  `notes` TEXT DEFAULT NULL,
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_cd_user` (`user_id`),
+  KEY `idx_cd_biz` (`business_id`),
+  KEY `idx_cd_partner` (`partner_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `deal_transactions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `deal_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
+  `type` ENUM('client_payment', 'partner_payout') NOT NULL,
+  `payment_type` ENUM('advance', 'milestone', 'monthly', 'payout') NOT NULL DEFAULT 'milestone',
+  `amount` DECIMAL(18,2) NOT NULL,
+  `account_id` INT DEFAULT NULL,
+  `transaction_date` DATE NOT NULL,
+  `payment_method` VARCHAR(50) DEFAULT 'Bank Transfer',
+  `reference_no` VARCHAR(100) DEFAULT NULL,
+  `notes` TEXT DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_dt_deal` (`deal_id`),
+  KEY `idx_dt_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

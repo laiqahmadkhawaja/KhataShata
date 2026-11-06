@@ -280,6 +280,52 @@ assert_test("Job has no external partner distributions", count($job_summary['dis
 // Clean up test job business
 $db->exec("UPDATE businesses SET is_deleted = 1 WHERE id = $job_biz_id");
 
+// -------------------------------------------------------------
+// Test 16: Client Software Deals & Spreadsheet Math Verification
+// -------------------------------------------------------------
+// Deal 1: Zafar Brothers Iron (POS) -> Total: 15,000, Adv: 5,000, Paid: 10,000 -> Rem: 0
+$d1 = $db->query("SELECT * FROM client_deals WHERE client_name = 'Zafar Brothers Iron' AND is_deleted = 0 LIMIT 1")->fetch();
+assert_test("Zafar Brothers deal exists", !empty($d1));
+$d1_rem = round((float)$d1['total_amount'] - ((float)$d1['advance_amount'] + (float)$d1['client_paid_amount']), 2);
+assert_test("Zafar Brothers client remaining balance is Rs 0.00", abs($d1_rem - 0.00) < 0.01);
+assert_test("Zafar Brothers partner (40%) paid is Rs 6,000", abs((float)$d1['partner_paid_amount'] - 6000.00) < 0.01);
+
+// Deal 2: Al Rasheed Traders (UMS) -> Total: 10,000, Adv: 5,000, Paid: 0 -> Rem: 5,000
+$d2 = $db->query("SELECT * FROM client_deals WHERE client_name = 'Al Rasheed Traders' AND is_deleted = 0 LIMIT 1")->fetch();
+assert_test("Al Rasheed Traders deal exists", !empty($d2));
+$d2_rem = round((float)$d2['total_amount'] - ((float)$d2['advance_amount'] + (float)$d2['client_paid_amount']), 2);
+assert_test("Al Rasheed Traders client remaining balance is Rs 5,000", abs($d2_rem - 5000.00) < 0.01);
+$d2_partner_rem = round(((float)$d2['total_amount'] * 0.40) - (float)$d2['partner_paid_amount'], 2);
+assert_test("Al Rasheed Traders partner remaining due is Rs 2,000", abs($d2_partner_rem - 2000.00) < 0.01);
+
+// Deal 3: Smart Fit Hoisery (Manufacturing) -> Total: 25,000, Adv: 5,000, Paid: 0 -> Rem: 20,000
+$d3 = $db->query("SELECT * FROM client_deals WHERE client_name = 'Smart Fit Hoisery' AND is_deleted = 0 LIMIT 1")->fetch();
+assert_test("Smart Fit Hoisery deal exists", !empty($d3));
+$d3_rem = round((float)$d3['total_amount'] - ((float)$d3['advance_amount'] + (float)$d3['client_paid_amount']), 2);
+assert_test("Smart Fit Hoisery client remaining balance is Rs 20,000", abs($d3_rem - 20000.00) < 0.01);
+$d3_partner_rem = round(((float)$d3['total_amount'] * 0.40) - (float)$d3['partner_paid_amount'], 2);
+assert_test("Smart Fit Hoisery partner remaining due is Rs 10,000", abs($d3_partner_rem - 10000.00) < 0.01);
+
+// Test totals across all 3 deals:
+$sums = $db->query("
+    SELECT 
+        SUM(total_amount) as sum_total,
+        SUM(advance_amount) as sum_adv,
+        SUM(client_paid_amount) as sum_cpaid,
+        SUM(monthly_amount) as sum_monthly,
+        SUM(partner_paid_amount) as sum_ppaid
+    FROM client_deals 
+    WHERE is_deleted = 0
+")->fetch();
+assert_test("Total deals value equals Rs 50,000", abs((float)$sums['sum_total'] - 50000.00) < 0.01);
+assert_test("Total client collected (Adv + Paid) equals Rs 25,000", abs(((float)$sums['sum_adv'] + (float)$sums['sum_cpaid']) - 25000.00) < 0.01);
+assert_test("Total client remaining equals Rs 25,000", abs(((float)$sums['sum_total'] - ((float)$sums['sum_adv'] + (float)$sums['sum_cpaid'])) - 25000.00) < 0.01);
+assert_test("Total monthly retainers equals Rs 4,000", abs((float)$sums['sum_monthly'] - 4000.00) < 0.01);
+assert_test("Total partner paid equals Rs 8,000", abs((float)$sums['sum_ppaid'] - 8000.00) < 0.01);
+$partner_total_cut = (float)$sums['sum_total'] * 0.40;
+assert_test("Total partner remaining due equals Rs 12,000 (20k - 8k)", abs(($partner_total_cut - (float)$sums['sum_ppaid']) - 12000.00) < 0.01);
+
+
 
 // Summary
 echo "\n========================================================\n";
