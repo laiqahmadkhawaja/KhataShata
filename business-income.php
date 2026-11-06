@@ -1,12 +1,12 @@
 <?php
 /**
- * KhataShata - Business Income Listing
+ * KhataShata - Business Income & Job Salary Listing
  */
 require_once __DIR__ . '/config/app.php';
 require_auth();
 
 $user = current_user();
-$page_title = 'Business Income & Revenue';
+$page_title = 'Business Income & Job Salary';
 $active_nav = 'business_income';
 
 $db = get_db_connection();
@@ -60,7 +60,7 @@ foreach ($incomes as $inc) {
 }
 
 // Businesses & Categories for filters
-$b_stmt = $db->prepare("SELECT id, name FROM businesses WHERE user_id = :uid AND is_deleted = 0 ORDER BY name ASC");
+$b_stmt = $db->prepare("SELECT id, name, collection_model FROM businesses WHERE user_id = :uid AND is_deleted = 0 ORDER BY name ASC");
 $b_stmt->execute(['uid' => $user['id']]);
 $businesses = $b_stmt->fetchAll();
 
@@ -74,21 +74,24 @@ require_once ROOT_PATH . '/includes/header.php';
 <div class="card" style="padding: 16px 20px; margin-bottom: 20px;">
   <form method="GET" action="" class="filter-bar" style="margin-bottom: 0;">
     <div class="filter-group" style="flex: 1; max-width: 220px;">
-      <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search client, title..." class="form-control">
+      <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search client, title, ref..." class="form-control">
     </div>
 
     <div class="filter-group">
       <select name="business_id" class="form-control" style="width: auto;" onchange="this.form.submit()">
-        <option value="0">All Businesses</option>
+        <option value="0">All Businesses & Jobs</option>
         <?php foreach ($businesses as $b): ?>
           <option value="<?= $b['id'] ?>" <?= $business_id == $b['id'] ? 'selected' : '' ?>>
-            <?= htmlspecialchars($b['name']) ?>
+            <?= htmlspecialchars($b['name']) ?> <?= ($b['collection_model'] === 'job') ? '(Job)' : '' ?>
           </option>
         <?php endforeach; ?>
       </select>
 
       <select name="payment_type" class="form-control" style="width: auto;" onchange="this.form.submit()">
         <option value="">All Payment Types</option>
+        <option value="salary" <?= $payment_type === 'salary' ? 'selected' : '' ?>>💵 Salary</option>
+        <option value="bonus" <?= $payment_type === 'bonus' ? 'selected' : '' ?>>🎁 Bonus</option>
+        <option value="allowance" <?= $payment_type === 'allowance' ? 'selected' : '' ?>>🚗 Allowance</option>
         <option value="advance" <?= $payment_type === 'advance' ? 'selected' : '' ?>>⚡ Advance</option>
         <option value="partial" <?= $payment_type === 'partial' ? 'selected' : '' ?>>🔄 Partial / Milestone</option>
         <option value="remaining" <?= $payment_type === 'remaining' ? 'selected' : '' ?>>🏁 Remaining / Final</option>
@@ -113,45 +116,37 @@ require_once ROOT_PATH . '/includes/header.php';
     <div>
       <a href="<?= BASE_URL ?>/business-income-create.php" class="btn btn-success">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Record Revenue</span>
+        <span>+ Record Revenue / Salary</span>
       </a>
     </div>
   </form>
 </div>
 
-<!-- Revenue Summary Bar -->
-<div class="card" style="padding: 14px 20px; background: var(--success-light); border-color: var(--success-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
-  <div>
-    <span style="font-weight: 700; color: var(--success-dark); font-size: 14px;">Total Filtered Business Revenue:</span>
-    <span style="font-size: 20px; font-weight: 800; color: var(--success-dark); margin-left: 8px;">
-      <?= format_money($total_revenue) ?>
-    </span>
-  </div>
-  <div style="font-size: 12.5px; color: var(--text-muted);">
-    Total Entries: <strong><?= count($incomes) ?></strong>
+<!-- Financial Summary Bar -->
+<div class="metrics-grid" style="margin-bottom: 20px;">
+  <div class="stat-card">
+    <div class="stat-label">Total Filtered Inflow</div>
+    <div class="stat-value money-positive"><?= format_money($total_revenue) ?></div>
+    <div class="stat-change"><?= count($incomes) ?> transaction(s) found</div>
   </div>
 </div>
 
 <?php if (empty($incomes)): ?>
-  <div class="card">
-    <div class="empty-state">
-      <div class="empty-state-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-      </div>
-      <div class="empty-state-title">No business income entries found</div>
-      <div class="empty-state-text">Record incoming client payments, contracts, advance, or monthly software retainers.</div>
-      <a href="<?= BASE_URL ?>/business-income-create.php" class="btn btn-success">Record First Revenue</a>
-    </div>
+  <div class="card empty-state">
+    <div class="empty-state-icon">💼</div>
+    <div class="empty-state-title">No Revenue or Salary Records Found</div>
+    <div class="empty-state-desc">There are no income entries matching your selected filters.</div>
+    <a href="<?= BASE_URL ?>/business-income-create.php" class="btn btn-primary" style="margin-top: 14px;">+ Record First Revenue / Salary</a>
   </div>
 <?php else: ?>
-  <div class="card" style="padding: 0; overflow: hidden;">
+  <div class="card">
     <div class="table-responsive">
-      <table class="data-table mobile-cards">
+      <table class="table">
         <thead>
           <tr>
-            <th>Title & Client</th>
+            <th>Title & Client / Employer</th>
             <th>Type</th>
-            <th>Business</th>
+            <th>Business / Job</th>
             <th>Category</th>
             <th>Month</th>
             <th>Date</th>
@@ -163,6 +158,7 @@ require_once ROOT_PATH . '/includes/header.php';
           <?php foreach ($incomes as $inc): 
             $ptype = $inc['payment_type'] ?? 'full';
             $amt = (float)$inc['amount'];
+            $is_job = ($inc['collection_model'] ?? 'direct') === 'job';
             $owner_est = $amt * 0.60;
             $partner_est = $amt * 0.40;
           ?>
@@ -173,7 +169,7 @@ require_once ROOT_PATH . '/includes/header.php';
                 </div>
                 <?php if (!empty($inc['client_name'])): ?>
                   <div style="font-size: 12px; color: var(--primary); font-weight: 600; margin-top: 1px;">
-                    👤 Client: <?= htmlspecialchars($inc['client_name']) ?>
+                    <?= $is_job ? '🏢 Employer: ' : '👤 Client: ' ?><?= htmlspecialchars($inc['client_name']) ?>
                   </div>
                 <?php endif; ?>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
@@ -189,7 +185,13 @@ require_once ROOT_PATH . '/includes/header.php';
               </td>
 
               <td data-label="Type">
-                <?php if ($ptype === 'advance'): ?>
+                <?php if ($ptype === 'salary'): ?>
+                  <span class="badge" style="background:#dcfce7; color:#15803d; font-size: 11px; font-weight:700;">💵 Salary</span>
+                <?php elseif ($ptype === 'bonus'): ?>
+                  <span class="badge" style="background:#fef3c7; color:#b45309; font-size: 11px; font-weight:700;">🎁 Bonus</span>
+                <?php elseif ($ptype === 'allowance'): ?>
+                  <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size: 11px; font-weight:700;">🚗 Allowance</span>
+                <?php elseif ($ptype === 'advance'): ?>
                   <span class="badge badge-warning" style="font-size: 11px;">⚡ Advance</span>
                 <?php elseif ($ptype === 'partial'): ?>
                   <span class="badge badge-info" style="font-size: 11px;">🔄 Partial</span>
@@ -206,6 +208,9 @@ require_once ROOT_PATH . '/includes/header.php';
                 <a href="<?= BASE_URL ?>/business-detail.php?id=<?= $inc['business_id'] ?>" style="font-weight: 600;">
                   <?= htmlspecialchars($inc['business_name']) ?>
                 </a>
+                <?php if ($is_job): ?>
+                  <span class="badge badge-success" style="font-size: 10px; margin-left: 3px;">Job</span>
+                <?php endif; ?>
               </td>
 
               <td data-label="Category">
@@ -230,10 +235,16 @@ require_once ROOT_PATH . '/includes/header.php';
                 <div style="font-weight: 800; font-size: 15px;" class="money-positive">
                   +<?= format_money($amt) ?>
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                  <span style="color: var(--success-dark); font-weight: 600;">You (60%): <?= format_money($owner_est) ?></span><br>
-                  <span style="color: #7c3aed; font-weight: 600;">Partner (40%): <?= format_money($partner_est) ?></span>
-                </div>
+                <?php if ($is_job): ?>
+                  <div style="font-size: 11px; color: var(--success-dark); font-weight: 700; margin-top: 2px;">
+                    💼 You (100% Salary): <?= format_money($amt) ?>
+                  </div>
+                <?php else: ?>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    <span style="color: var(--success-dark); font-weight: 600;">You (60%): <?= format_money($owner_est) ?></span><br>
+                    <span style="color: #7c3aed; font-weight: 600;">Partner (40%): <?= format_money($partner_est) ?></span>
+                  </div>
+                <?php endif; ?>
               </td>
             </tr>
           <?php endforeach; ?>

@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         $start_date = trim($_POST['start_date'] ?? date('Y-m-d'));
         $ownership_type = trim($_POST['ownership_type'] ?? 'Partnership');
-        $collection_model = trim($_POST['collection_model'] ?? 'direct');
+        $collection_model = in_array(trim($_POST['collection_model'] ?? 'direct'), ['direct', 'external', 'job']) ? trim($_POST['collection_model']) : 'direct';
         $status = trim($_POST['status'] ?? 'Active');
         $notes = trim($_POST['notes'] ?? '');
         $initial_owner_pct = (float)($_POST['owner_percentage'] ?? 100.0);
@@ -113,7 +113,7 @@ require_once ROOT_PATH . '/includes/header.php';
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Business Name <span class="req">*</span></label>
-          <input type="text" name="name" class="form-control" placeholder="e.g. Acme Digital Solutions" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>" autofocus>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Acme Digital Solutions, Systems Ltd (Job)" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>" autofocus>
         </div>
 
         <div class="form-group">
@@ -130,15 +130,18 @@ require_once ROOT_PATH . '/includes/header.php';
       </div>
 
       <div class="form-group" style="margin-bottom: 16px;">
-          <label class="form-label">Collection & Revenue Model <span class="req">*</span></label>
-          <select name="collection_model" class="form-control" required>
-            <option value="direct">🏢 Direct Collection (آپ خود 100% رقم وصول کرتے ہیں - 60/40 تقسیم)</option>
-            <option value="external">🤝 External Partnership (پارٹنر یا بزنس رقم وصول کرتا ہے - آپ کو صرف آپ کا منافع ملتا ہے)</option>
-          </select>
-          <div class="form-text">Direct Collection: Client payments arrive directly in your account (e.g. SaaS). External: Partner collects, you receive profit distributions.</div>
+        <label class="form-label">Collection & Revenue Model <span class="req">*</span></label>
+        <select name="collection_model" id="collection_model" class="form-control" required onchange="handleModelChange()">
+          <option value="direct" <?= (isset($_POST['collection_model']) && $_POST['collection_model'] === 'direct') ? 'selected' : '' ?>>🏢 Direct Collection (آپ خود 100% رقم وصول کرتے ہیں - پارٹنرز کے ساتھ تقسیم)</option>
+          <option value="external" <?= (isset($_POST['collection_model']) && $_POST['collection_model'] === 'external') ? 'selected' : '' ?>>🤝 External Partnership (پارٹنر یا بزنس رقم وصول کرتا ہے - آپ کو صرف آپ کا منافع ملتا ہے)</option>
+          <option value="job" <?= (isset($_POST['collection_model']) && $_POST['collection_model'] === 'job') ? 'selected' : '' ?>>💼 Job / Employment Salary (ملازمت / نوکری - کمپنی سے ماہانہ تنخواہ اور الاؤنسز)</option>
+        </select>
+        <div class="form-text" id="model-helper-text">
+          Direct Collection: Client payments arrive directly in your account (e.g. SaaS). External: Partner collects, you receive profit distributions. Job: Monthly employment salary credited 100% directly to you.
         </div>
+      </div>
 
-        <div class="form-grid">
+      <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Business Start Date <span class="req">*</span></label>
           <input type="date" name="start_date" class="form-control" required value="<?= htmlspecialchars($_POST['start_date'] ?? date('Y-m-d')) ?>">
@@ -146,7 +149,7 @@ require_once ROOT_PATH . '/includes/header.php';
 
         <div class="form-group">
           <label class="form-label">Ownership Type <span class="req">*</span></label>
-          <select name="ownership_type" class="form-control" required>
+          <select name="ownership_type" id="ownership_type" class="form-control" required>
             <option value="Partnership" selected>Partnership</option>
             <option value="Sole Proprietorship">Sole Proprietorship (100% You)</option>
             <option value="Joint Venture">Joint Venture</option>
@@ -159,8 +162,8 @@ require_once ROOT_PATH . '/includes/header.php';
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Your Initial Ownership Percentage (%) <span class="req">*</span></label>
-          <input type="number" step="0.01" min="0" max="100" name="owner_percentage" class="form-control" value="<?= htmlspecialchars($_POST['owner_percentage'] ?? '100.00') ?>" required>
-          <div class="form-text">You can add partners and configure individual share allocations anytime.</div>
+          <input type="number" step="0.01" min="0" max="100" name="owner_percentage" id="owner_percentage" class="form-control" value="<?= htmlspecialchars($_POST['owner_percentage'] ?? '100.00') ?>" required>
+          <div class="form-text" id="owner-pct-help">You can add partners and configure individual share allocations anytime.</div>
         </div>
 
         <div class="form-group">
@@ -175,7 +178,7 @@ require_once ROOT_PATH . '/includes/header.php';
 
       <div class="form-group">
         <label class="form-label">Business Description</label>
-        <textarea name="description" rows="3" class="form-control" placeholder="Brief outline of business scope, offerings, or clients..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
+        <textarea name="description" rows="3" class="form-control" placeholder="Brief outline of business scope, company employer, or job role..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
       </div>
 
       <div class="form-group">
@@ -197,5 +200,29 @@ require_once ROOT_PATH . '/includes/header.php';
     </form>
   </div>
 </div>
+
+<script>
+function handleModelChange() {
+  const model = document.getElementById('collection_model').value;
+  const oType = document.getElementById('ownership_type');
+  const oPct = document.getElementById('owner_percentage');
+  const helper = document.getElementById('model-helper-text');
+  const pctHelp = document.getElementById('owner-pct-help');
+
+  if (model === 'job') {
+    oType.value = 'Sole Proprietorship';
+    oPct.value = '100.00';
+    helper.innerHTML = '<strong style="color:var(--success-dark);">💼 Job / Employment Model:</strong> ماہانہ تنخواہ اور الاؤنسز آپ کے ذاتی اکاؤنٹ میں 100% آمدن کے طور پر جمع ہوں گے۔ پارٹنر شیئر کی ضرورت نہیں ہے۔';
+    pctHelp.innerText = 'For Job/Salary model, 100% of income is credited directly to you.';
+  } else if (model === 'external') {
+    helper.innerHTML = '<strong style="color:var(--warning-dark);">🤝 External Partnership:</strong> پارٹنر کلائنٹس سے رقم وصول کرتا ہے اور آپ کو آپ کا طے شدہ منافع دیتا ہے۔';
+    pctHelp.innerText = 'You can add partners and configure individual share allocations anytime.';
+  } else {
+    helper.innerHTML = '<strong style="color:var(--primary);">🏢 Direct Collection:</strong> آپ کلائنٹس سے خود رقم وصول کرتے ہیں اور پارٹنرز کو ان کا منافع ادا کرتے ہیں۔';
+    pctHelp.innerText = 'You can add partners and configure individual share allocations anytime.';
+  }
+}
+document.addEventListener('DOMContentLoaded', handleModelChange);
+</script>
 
 <?php require_once ROOT_PATH . '/includes/footer.php'; ?>

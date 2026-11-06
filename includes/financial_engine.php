@@ -857,7 +857,7 @@ class FinancialEngine {
             foreach ($summary['distributions'] as $d) {
                 if ($d['is_owner']) {
                     $owner_share_earned += (float)$d['share_amount'];
-                    if (($um['collection_model'] ?? 'direct') === 'direct') {
+                    if (($um['collection_model'] ?? 'direct') === 'direct' || ($um['collection_model'] ?? '') === 'job') {
                         $direct_owner_retained += (float)$d['share_amount'];
                     }
                     break;

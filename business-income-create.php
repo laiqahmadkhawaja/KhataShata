@@ -1,6 +1,6 @@
 <?php
 /**
- * KhataShata - Record Business Revenue
+ * KhataShata - Record Business Revenue & Job Salary
  */
 require_once __DIR__ . '/config/app.php';
 require_auth();
@@ -20,7 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $account_id = !empty($_POST['account_id']) ? (int)$_POST['account_id'] : null;
         $title = trim($_POST['title'] ?? '');
         $client_name = trim($_POST['client_name'] ?? '');
-        $payment_type = trim($_POST['payment_type'] ?? 'full');
+        $valid_ptypes = ['advance', 'partial', 'remaining', 'full', 'monthly', 'salary', 'bonus', 'allowance', 'other'];
+        $payment_type = in_array(trim($_POST['payment_type'] ?? 'full'), $valid_ptypes) ? trim($_POST['payment_type']) : 'full';
         $amount = (float)($_POST['amount'] ?? 0);
         $transaction_date = trim($_POST['transaction_date'] ?? date('Y-m-d'));
         $financial_month = trim($_POST['financial_month'] ?? date('Y-m', strtotime($transaction_date)));
@@ -78,7 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // If account was linked, deposit into account & log account transaction
                     if ($account_id) {
-                        FinancialEngine::recordAccountInflow($account_id, $amount, 'business_income', 'business_income', $income_id, $transaction_date, $reference_no, "Business Revenue: $title" . ($client_name ? " ($client_name)" : ""), $user['id']);
+                        $desc_prefix = ($payment_type === 'salary') ? 'Job Salary' : 'Business Revenue';
+                        FinancialEngine::recordAccountInflow($account_id, $amount, 'business_income', 'business_income', $income_id, $transaction_date, $reference_no, "$desc_prefix: $title" . ($client_name ? " ($client_name)" : ""), $user['id']);
                     }
 
                     // Sync partner earnings ledger automatically
@@ -89,10 +91,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         FinancialEngine::syncPartnerEarnings($business_id, $bpid);
                     }
 
-                    log_audit($user['id'], 'business_income', $income_id, 'create', null, $_POST, "Recorded business income of $amount");
+                    log_audit($user['id'], 'business_income', $income_id, 'create', null, $_POST, "Recorded business income/salary of $amount");
                     $db->commit();
 
-                    flash_set('success', "Business revenue of " . format_money($amount) . " recorded successfully!");
+                    flash_set('success', "Revenue/Salary of " . format_money($amount) . " recorded successfully!");
                     redirect("business-detail.php?id=$business_id&tab=income");
                 } catch (Exception $e) {
                     $db->rollBack();
@@ -112,16 +114,22 @@ $businesses = $stmt->fetchAll();
 $business_shares = [];
 foreach ($businesses as $b) {
     $parts = FinancialEngine::getEffectiveOwnership($b['id']);
-    $owner_pct = 60.0;
+    $owner_pct = 100.0;
     $partner_shares = [];
-    foreach ($parts as $p) {
-        if ($p['is_owner']) {
-            $owner_pct = (float)$p['percentage'];
-        } else {
-            $partner_shares[] = [
-                'name' => $p['name'],
-                'percentage' => (float)$p['percentage']
-            ];
+    $is_job = ($b['collection_model'] ?? 'direct') === 'job';
+    
+    if ($is_job) {
+        $owner_pct = 100.0;
+    } else {
+        foreach ($parts as $p) {
+            if ($p['is_owner']) {
+                $owner_pct = (float)$p['percentage'];
+            } else {
+                $partner_shares[] = [
+                    'name' => $p['name'],
+                    'percentage' => (float)$p['percentage']
+                ];
+            }
         }
     }
     $business_shares[$b['id']] = [
@@ -142,7 +150,7 @@ $stmt = $db->prepare("SELECT id, account_name, current_balance FROM accounts WHE
 $stmt->execute(['uid' => $user['id']]);
 $accounts = $stmt->fetchAll();
 
-$page_title = 'Record Business Revenue';
+$page_title = 'Record Business Revenue & Job Salary';
 $active_nav = 'business_income';
 
 require_once ROOT_PATH . '/includes/header.php';
@@ -151,8 +159,8 @@ require_once ROOT_PATH . '/includes/header.php';
 <div style="max-width: 780px; margin: 0 auto;">
   <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
     <div>
-      <h2 style="font-size: 22px; font-weight: 800; color: var(--text-main);">Record Business Revenue</h2>
-      <p style="font-size: 13px; color: var(--text-muted);">Log customer payments, contracts, advance, and milestone payments.</p>
+      <h2 style="font-size: 22px; font-weight: 800; color: var(--text-main);">Record Revenue & Job Salary</h2>
+      <p style="font-size: 13px; color: var(--text-muted);">Log client payments, project milestones, retainers, and job salaries.</p>
     </div>
     <a href="<?= BASE_URL ?>/business-income.php" class="btn btn-secondary btn-sm">Cancel</a>
   </div>
@@ -167,20 +175,22 @@ require_once ROOT_PATH . '/includes/header.php';
 
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Business <span class="req">*</span></label>
+          <label class="form-label">Business / Source <span class="req">*</span></label>
           <select name="business_id" id="business_id" class="form-control" required onchange="calculateSplit()">
-            <option value="">-- Select Business --</option>
-            <?php foreach ($businesses as $b): ?>
+            <option value="">-- Select Business / Job --</option>
+            <?php foreach ($businesses as $b): 
+              $m_label = ($b['collection_model'] ?? 'direct') === 'job' ? '💼 Job / Salary' : (($b['collection_model'] ?? 'direct') === 'direct' ? '🏢 Direct' : '🤝 External');
+            ?>
               <option value="<?= $b['id'] ?>" <?= ($prefill_business == $b['id'] || (isset($_POST['business_id']) && $_POST['business_id'] == $b['id'])) ? 'selected' : '' ?>>
-                <?= htmlspecialchars($b['name']) ?> (<?= ($b['collection_model'] ?? 'direct') === 'direct' ? 'Direct Collection' : 'External' ?>)
+                <?= htmlspecialchars($b['name']) ?> (<?= $m_label ?>)
               </option>
             <?php endforeach; ?>
           </select>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Revenue Category <span class="req">*</span></label>
-          <select name="category_id" class="form-control" required>
+          <label class="form-label">Revenue / Income Category <span class="req">*</span></label>
+          <select name="category_id" id="category_id" class="form-control" required>
             <option value="">-- Select Category --</option>
             <?php foreach ($categories as $cat): ?>
               <option value="<?= $cat['id'] ?>" <?= (isset($_POST['category_id']) && $_POST['category_id'] == $cat['id']) ? 'selected' : '' ?>>
@@ -196,6 +206,9 @@ require_once ROOT_PATH . '/includes/header.php';
         <div class="form-group">
           <label class="form-label">Payment Type / Stage <span class="req">*</span></label>
           <select name="payment_type" id="payment_type" class="form-control" required>
+            <option value="salary" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'salary') ? 'selected' : '' ?>>💵 Monthly Salary (ماہانہ تنخواہ)</option>
+            <option value="bonus" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'bonus') ? 'selected' : '' ?>>🎁 Job Bonus / Incentive (بونس / انعام)</option>
+            <option value="allowance" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'allowance') ? 'selected' : '' ?>>🚗 Allowance / Medical / Perks (الاؤنس)</option>
             <option value="advance" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'advance') ? 'selected' : '' ?>>⚡ Advance Payment (ایڈوانس پیمنٹ)</option>
             <option value="partial" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'partial') ? 'selected' : '' ?>>🔄 Partial / Milestone Payment (پارشل ادائیگی)</option>
             <option value="remaining" <?= (isset($_POST['payment_type']) && $_POST['payment_type'] === 'remaining') ? 'selected' : '' ?>>🏁 Remaining / Final Settlement (بقایا / فائنل ادائیگی)</option>
@@ -206,16 +219,16 @@ require_once ROOT_PATH . '/includes/header.php';
         </div>
 
         <div class="form-group">
-          <label class="form-label">Client / Customer Name</label>
-          <input type="text" name="client_name" class="form-control" placeholder="e.g. Zafar, Al Rasheed Traders, ABC Corp" value="<?= htmlspecialchars($_POST['client_name'] ?? '') ?>">
-          <div class="form-text">Client or company making the payment.</div>
+          <label class="form-label" id="client_label">Client / Customer Name</label>
+          <input type="text" name="client_name" id="client_name" class="form-control" placeholder="e.g. Zafar, Al Rasheed Traders, ABC Corp" value="<?= htmlspecialchars($_POST['client_name'] ?? '') ?>">
+          <div class="form-text" id="client_help">Client or employer company making the payment.</div>
         </div>
       </div>
 
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Income Title / Description <span class="req">*</span></label>
-          <input type="text" name="title" class="form-control" placeholder="e.g. POS Software Advance, UMS Web App Milestone 1" required value="<?= htmlspecialchars($_POST['title'] ?? '') ?>" autofocus>
+          <label class="form-label" id="title_label">Income / Salary Title <span class="req">*</span></label>
+          <input type="text" name="title" id="title" class="form-control" placeholder="e.g. November 2026 Salary, POS Software Advance" required value="<?= htmlspecialchars($_POST['title'] ?? '') ?>" autofocus>
         </div>
 
         <div class="form-group">
@@ -232,17 +245,17 @@ require_once ROOT_PATH . '/includes/header.php';
         </div>
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
           <div style="flex: 1; min-width: 160px; background: #fff; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
-            <div style="font-size: 11.5px; color: var(--text-muted);">🟢 Your Retained Share (<span id="owner-pct-display">60</span>%)</div>
+            <div style="font-size: 11.5px; color: var(--text-muted);">🟢 Your Share (<span id="owner-pct-display">100</span>%)</div>
             <div id="owner-share-display" style="font-size: 18px; font-weight: 800; color: var(--success-dark); margin-top: 2px;">Rs 0.00</div>
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Remains in your account</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="owner-share-note">Remains in your account</div>
           </div>
-          <div style="flex: 1; min-width: 160px; background: #fff; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
-            <div style="font-size: 11.5px; color: var(--text-muted);">🟣 Partner Share (<span id="partner-pct-display">40</span>%)</div>
+          <div id="partner-box" style="flex: 1; min-width: 160px; background: #fff; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="font-size: 11.5px; color: var(--text-muted);">🟣 Partner Share (<span id="partner-pct-display">0</span>%)</div>
             <div id="partner-share-display" style="font-size: 18px; font-weight: 800; color: #7c3aed; margin-top: 2px;">Rs 0.00</div>
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Payable to partner ledger</div>
           </div>
         </div>
-        <div id="split-helper-text" style="font-size: 11.5px; color: var(--text-muted); margin-top: 10px;">
+        <div id="split-helper-text" style="font-size: 11.5px; color: var(--text-muted); margin-top: 10px; line-height: 1.5;">
           پوری رقم آپ کے منتخب اکاؤنٹ میں جمع ہوگی۔ آپ کا حصہ آپ کے پاس ہی رہے گا، پارٹنر کا حصہ اس کے کھاتے میں قابلِ ادائیگی شامل ہو جائے گا۔
         </div>
       </div>
@@ -256,7 +269,7 @@ require_once ROOT_PATH . '/includes/header.php';
         <div class="form-group">
           <label class="form-label">Financial Month (YYYY-MM) <span class="req">*</span></label>
           <input type="month" name="financial_month" id="fin_month" class="form-control" required value="<?= htmlspecialchars($_POST['financial_month'] ?? date('Y-m')) ?>">
-          <div class="form-text">The financial accounting period this revenue belongs to.</div>
+          <div class="form-text">The financial accounting period this revenue/salary belongs to.</div>
         </div>
       </div>
 
@@ -271,7 +284,7 @@ require_once ROOT_PATH . '/includes/header.php';
               </option>
             <?php endforeach; ?>
           </select>
-          <div class="form-text">Client payment will be credited directly to this account balance.</div>
+          <div class="form-text">Amount will be credited directly to this account balance.</div>
         </div>
 
         <div class="form-group">
@@ -290,24 +303,24 @@ require_once ROOT_PATH . '/includes/header.php';
 
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Invoice / Reference Number</label>
-          <input type="text" name="reference_no" class="form-control" placeholder="e.g. INV-2026-001" value="<?= htmlspecialchars($_POST['reference_no'] ?? '') ?>">
+          <label class="form-label">Invoice / Reference / Salary Slip No</label>
+          <input type="text" name="reference_no" class="form-control" placeholder="e.g. SLIP-2026-11, INV-2026-001" value="<?= htmlspecialchars($_POST['reference_no'] ?? '') ?>">
         </div>
 
         <div class="form-group">
-          <label class="form-label">Invoice / Receipt Attachment</label>
+          <label class="form-label">Slip / Receipt Attachment</label>
           <input type="file" name="attachment" class="form-control" accept="image/*,application/pdf">
         </div>
       </div>
 
       <div class="form-group">
-        <label class="form-label">Description / Scope Details</label>
-        <textarea name="description" rows="2" class="form-control" placeholder="e.g. 50% advance for custom inventory SaaS module..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
+        <label class="form-label">Description / Remarks</label>
+        <textarea name="description" rows="2" class="form-control" placeholder="e.g. Monthly salary with medical and travel allowance..."><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
       </div>
 
       <div style="display: flex; gap: 12px; margin-top: 24px;">
         <button type="submit" class="btn btn-success btn-lg" style="flex: 1;">
-          Save Business Revenue
+          Save Income Entry
         </button>
         <a href="<?= BASE_URL ?>/business-income.php" class="btn btn-secondary btn-lg">Cancel</a>
       </div>
@@ -317,6 +330,11 @@ require_once ROOT_PATH . '/includes/header.php';
 
 <script>
 const businessShares = <?= json_encode($business_shares) ?>;
+let userManuallyPickedPType = <?= isset($_POST['payment_type']) ? 'true' : 'false' ?>;
+
+document.getElementById('payment_type').addEventListener('change', function() {
+  userManuallyPickedPType = true;
+});
 
 function updateMonthFromDate(val) {
   if (val && val.length >= 7) {
@@ -328,28 +346,59 @@ function calculateSplit() {
   const bid = document.getElementById('business_id').value;
   const amtInput = document.getElementById('amount').value;
   const splitBox = document.getElementById('split-box');
+  const clientLabel = document.getElementById('client_label');
+  const clientInput = document.getElementById('client_name');
+  const clientHelp = document.getElementById('client_help');
+  const ptypeSelect = document.getElementById('payment_type');
+  const partnerBox = document.getElementById('partner-box');
   
-  if (!bid || !businessShares[bid] || !amtInput || parseFloat(amtInput) <= 0) {
+  if (!bid || !businessShares[bid]) {
     splitBox.style.display = 'none';
     return;
   }
   
   const bData = businessShares[bid];
-  const amt = parseFloat(amtInput);
-  const ownerPct = bData.owner_pct || 60;
+  const isJob = (bData.collection_model === 'job');
+  const isExternal = (bData.collection_model === 'external');
   
-  // Total partner pct
-  let partnerPct = 0;
-  let partnerName = 'Partner';
-  if (bData.partners && bData.partners.length > 0) {
-    partnerPct = bData.partners[0].percentage;
-    partnerName = bData.partners[0].name;
+  // Dynamic fields for Job model vs Standard Business
+  if (isJob) {
+    clientLabel.innerHTML = '🏢 Employer / Company Name';
+    clientInput.placeholder = 'e.g. Systems Ltd, Acme Corp, DevStudio';
+    clientHelp.innerText = 'Company or employer organization providing your salary.';
+    if (!userManuallyPickedPType) {
+      ptypeSelect.value = 'salary';
+    }
   } else {
-    partnerPct = Math.max(0, 100 - ownerPct);
+    clientLabel.innerHTML = '👤 Client / Customer Name';
+    clientInput.placeholder = 'e.g. Zafar, Al Rasheed Traders, ABC Corp';
+    clientHelp.innerText = 'Client or company making the payment.';
+    if (!userManuallyPickedPType && ptypeSelect.value === 'salary') {
+      ptypeSelect.value = 'full';
+    }
   }
   
-  const ownerShare = (amt * ownerPct) / 100;
-  const partnerShare = (amt * partnerPct) / 100;
+  if (!amtInput || parseFloat(amtInput) <= 0) {
+    splitBox.style.display = 'none';
+    return;
+  }
+  
+  const amt = parseFloat(amtInput);
+  const ownerPct = isJob ? 100 : (bData.owner_pct || 60);
+  
+  let partnerPct = 0;
+  let partnerName = 'Partner';
+  if (!isJob) {
+    if (bData.partners && bData.partners.length > 0) {
+      partnerPct = bData.partners[0].percentage;
+      partnerName = bData.partners[0].name;
+    } else {
+      partnerPct = Math.max(0, 100 - ownerPct);
+    }
+  }
+  
+  const ownerShare = isJob ? amt : ((amt * ownerPct) / 100);
+  const partnerShare = isJob ? 0 : ((amt * partnerPct) / 100);
   
   document.getElementById('owner-pct-display').innerText = ownerPct.toFixed(0);
   document.getElementById('owner-share-display').innerText = 'Rs ' + ownerShare.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -360,14 +409,21 @@ function calculateSplit() {
   const badge = document.getElementById('collection-badge');
   const helper = document.getElementById('split-helper-text');
   
-  if (bData.collection_model === 'external') {
-    badge.innerText = 'External Partnership';
+  if (isJob) {
+    badge.innerText = '💼 Job / Salary Model (100% Personal Entitlement)';
+    badge.className = 'badge badge-success';
+    partnerBox.style.display = 'none';
+    helper.innerHTML = '<strong style="color:var(--success-dark);">ملازمت کی تنخواہ:</strong> پوری رقم آپ کے منتخب کردہ اکاؤنٹ میں آپ کی 100% ذاتی آمدن کے طور پر جمع ہوگی۔ کسی پارٹنر کو تقسیم کرنے کی ضرورت نہیں ہے۔';
+  } else if (isExternal) {
+    badge.innerText = '🤝 External Partnership';
     badge.className = 'badge badge-warning';
+    partnerBox.style.display = 'block';
     helper.innerText = 'اس بزنس میں پارٹنر کلیکشن کرتا ہے۔ جب آپ کو آپ کا شیئر ملے تو وہ آپ کی آمدن ہے۔';
   } else {
-    badge.innerText = 'Direct Collection (' + ownerPct.toFixed(0) + '/' + partnerPct.toFixed(0) + ' Split)';
+    badge.innerText = '🏢 Direct Collection (' + ownerPct.toFixed(0) + '/' + partnerPct.toFixed(0) + ' Split)';
     badge.className = 'badge badge-info';
-    helper.innerText = 'پوری رقم آپ کے اکاؤنٹ میں جمع ہوگی۔ آپ کا ' + ownerPct.toFixed(0) + '% شیئر آپ کے پاس ہی رہے گا، ' + partnerName + ' کا ' + partnerPct.toFixed(0) + '% شیئر اس کے کھاتے میں قابلِ ادائیگی شو ہوگا۔';
+    partnerBox.style.display = 'block';
+    helper.innerText = 'پوری رقم آپ کے اکاؤنٹ میں جمع ہوگی۔ آپ کا ' + ownerPct.toFixed(0) + '% شیئر آپ کے پاس رہے گا، ' + partnerName + ' کا ' + partnerPct.toFixed(0) + '% شیئر اس کے کھاتے میں قابلِ ادائیگی شو ہوگا۔';
   }
   
   splitBox.style.display = 'block';

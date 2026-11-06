@@ -107,7 +107,7 @@ $lifetime_exp = (float)$exp_stmt->fetchColumn();
 $lifetime_profit = round($lifetime_rev - $lifetime_exp, 2);
 
 // Lifetime Owner Share
-if (($business['collection_model'] ?? 'direct') === 'direct') {
+if (($business['collection_model'] ?? 'direct') === 'direct' || ($business['collection_model'] ?? '') === 'job') {
     $owner_pct = 60.0;
     foreach ($participants as $p) {
         if ($p['is_owner']) { $owner_pct = (float)$p['percentage']; break; }
@@ -207,6 +207,7 @@ require_once ROOT_PATH . '/includes/header.php';
       <div>
         <div style="display: flex; align-items: center; gap: 10px;">
           <h2 style="font-size: 22px; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em;"><?= htmlspecialchars($business['name']) ?></h2>
+          <span class="badge <?= ($business['collection_model'] ?? '') === 'job' ? 'badge-success' : (($business['collection_model'] ?? 'direct') === 'direct' ? 'badge-info' : 'badge-warning') ?>" style="font-size: 11px;"><?= ($business['collection_model'] ?? '') === 'job' ? '💼 Job / Salary' : (($business['collection_model'] ?? 'direct') === 'direct' ? '🏢 Direct Collection' : '🤝 External Partnership') ?></span>
           <span class="badge <?= $business['status'] === 'Active' ? 'badge-success' : ($business['status'] === 'Inactive' ? 'badge-warning' : 'badge-neutral') ?>">
             <?= htmlspecialchars($business['status']) ?>
           </span>
@@ -222,7 +223,7 @@ require_once ROOT_PATH . '/includes/header.php';
     <!-- Quick Action Buttons -->
     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
       <a href="<?= BASE_URL ?>/business-income-create.php?business_id=<?= $business['id'] ?>" class="btn btn-success btn-sm">
-        + Add Revenue
+        + Add <?= ($business['collection_model'] ?? '') === 'job' ? 'Salary' : 'Revenue' ?>
       </a>
       <a href="<?= BASE_URL ?>/business-expense-create.php?business_id=<?= $business['id'] ?>" class="btn btn-danger btn-sm">
         + Add Expense
@@ -597,7 +598,7 @@ require_once ROOT_PATH . '/includes/header.php';
                 <td data-label="Title">
                   <div style="font-weight: 700;"><?= htmlspecialchars($inc['title']) ?></div>
                   <?php if (!empty($inc['client_name'])): ?>
-                    <div style="font-size: 11.5px; color: var(--primary); font-weight: 600;">👤 <?= htmlspecialchars($inc['client_name']) ?></div>
+                    <div style="font-size: 11.5px; color: var(--primary); font-weight: 600;"><?= ($business['collection_model'] ?? '') === 'job' ? '🏢 Employer: ' : '👤 ' ?><?= htmlspecialchars($inc['client_name']) ?></div>
                   <?php endif; ?>
                   <div style="font-size: 11px; color: var(--text-muted);">
                     Ref: <?= htmlspecialchars($inc['reference_no'] ?? '-') ?>

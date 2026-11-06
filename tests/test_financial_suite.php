@@ -250,6 +250,37 @@ $history_check->execute(['id' => $test_biz_id]);
 $closings_count = (int)$history_check->fetchColumn();
 assert_test("Soft-deleting business preserves its historical financial closings in database", $closings_count > 0);
 
+// -------------------------------------------------------------
+// Test 15: Job Collection & Revenue Model Integration
+// -------------------------------------------------------------
+$db->exec("
+    INSERT INTO businesses (user_id, name, start_date, ownership_type, collection_model, status)
+    VALUES (1, 'QA Tech Corp (Employment Job)', '2026-10-01', 'Sole Proprietorship', 'job', 'Active')
+");
+$job_biz_id = $db->lastInsertId();
+assert_test("Create business with collection_model = 'job'", $job_biz_id > 0);
+
+$db->exec("
+    INSERT INTO business_ownership (business_id, partner_id, percentage, effective_date)
+    VALUES ($job_biz_id, NULL, 100.00, '2026-10-01')
+");
+
+$db->exec("
+    INSERT INTO business_income (user_id, business_id, title, client_name, payment_type, amount, transaction_date, financial_month, payment_method)
+    VALUES (1, $job_biz_id, 'October 2026 Monthly Salary', 'QA Tech Corp', 'salary', 120000.00, '2026-10-31', '2026-10', 'Bank Transfer')
+");
+$job_inc_id = $db->lastInsertId();
+assert_test("Record Rs. 120,000 job salary with payment_type = 'salary'", $job_inc_id > 0);
+
+$job_summary = FinancialEngine::getMonthlySummary($job_biz_id, '2026-10');
+assert_test("Job revenue matches Rs. 120,000", abs($job_summary['total_revenue'] - 120000.00) < 0.01);
+assert_test("Job 100% owner share matches Rs. 120,000", abs($job_summary['distributions'][0]['share_amount'] - 120000.00) < 0.01);
+assert_test("Job has no external partner distributions", count($job_summary['distributions']) === 1);
+
+// Clean up test job business
+$db->exec("UPDATE businesses SET is_deleted = 1 WHERE id = $job_biz_id");
+
+
 // Summary
 echo "\n========================================================\n";
 echo "QA SUITE SUMMARY: $passed PASSED, $failed FAILED\n";

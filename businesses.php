@@ -81,7 +81,7 @@ foreach ($raw_businesses as $b) {
     }
 
     // Total outstanding receivables from this business for owner
-    if (($b['collection_model'] ?? 'direct') === 'direct') {
+    if (($b['collection_model'] ?? 'direct') === 'direct' || ($b['collection_model'] ?? '') === 'job') {
         $outstanding_rec = 0.00;
     } else {
         $stmt_rec = $db->prepare("
@@ -178,8 +178,8 @@ require_once ROOT_PATH . '/includes/header.php';
                 <a href="<?= BASE_URL ?>/business-detail.php?id=<?= $b['id'] ?>" style="font-weight: 700; color: var(--text-main); font-size: 14.5px;">
                   <?= htmlspecialchars($b['name']) ?>
                 </a>
-                <span class="badge <?= ($b['collection_model'] ?? 'direct') === 'direct' ? 'badge-info' : 'badge-warning' ?>" style="font-size: 10px; margin-left: 4px;">
-                  <?= ($b['collection_model'] ?? 'direct') === 'direct' ? 'Direct Collection' : 'External Partnership' ?>
+                <span class="badge <?= ($b['collection_model'] ?? '') === 'job' ? 'badge-success' : (($b['collection_model'] ?? 'direct') === 'direct' ? 'badge-info' : 'badge-warning') ?>" style="font-size: 10px; margin-left: 4px;">
+                  <?= ($b['collection_model'] ?? '') === 'job' ? '💼 Job / Salary' : (($b['collection_model'] ?? 'direct') === 'direct' ? 'Direct Collection' : 'External Partnership') ?>
                 </span>
                 <div style="font-size: 11.5px; color: var(--text-muted);">
                   <?= htmlspecialchars($b['category_name'] ?? 'General') ?> &bull; Started <?= format_date($b['start_date']) ?>

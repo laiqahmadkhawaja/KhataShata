@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS `businesses` (
   `logo` VARCHAR(255) DEFAULT NULL,
   `start_date` DATE NOT NULL,
   `ownership_type` VARCHAR(50) DEFAULT 'Partnership',
-  `collection_model` ENUM('direct', 'external') DEFAULT 'direct', -- direct: user collects 100% payments; external: partner collects, user gets share
+  `collection_model` ENUM('direct', 'external', 'job') DEFAULT 'direct', -- direct: user collects 100% payments; external: partner collects, user gets share; job: salary/employment income
   `status` ENUM('Active', 'Inactive', 'Closed') DEFAULT 'Active',
   `notes` TEXT DEFAULT NULL,
   `is_deleted` TINYINT(1) DEFAULT 0,
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS `business_income` (
   `account_id` INT DEFAULT NULL,
   `title` VARCHAR(200) NOT NULL,
   `client_name` VARCHAR(150) DEFAULT NULL,
-  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'other') DEFAULT 'full',
+  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'salary', 'bonus', 'allowance', 'other') DEFAULT 'full',
   `amount` DECIMAL(18,2) NOT NULL,
   `transaction_date` DATE NOT NULL,
   `financial_month` VARCHAR(7) NOT NULL, -- Format: YYYY-MM
@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS `business_expenses` (
   `account_id` INT DEFAULT NULL,
   `title` VARCHAR(200) NOT NULL,
   `client_name` VARCHAR(150) DEFAULT NULL,
-  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'other') DEFAULT 'full',
+  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'salary', 'bonus', 'allowance', 'other') DEFAULT 'full',
   `amount` DECIMAL(18,2) NOT NULL,
   `date` DATE NOT NULL,
   `financial_month` VARCHAR(7) NOT NULL, -- Format: YYYY-MM
@@ -350,7 +350,7 @@ CREATE TABLE IF NOT EXISTS `personal_income` (
   `account_id` INT DEFAULT NULL,
   `title` VARCHAR(200) NOT NULL,
   `client_name` VARCHAR(150) DEFAULT NULL,
-  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'other') DEFAULT 'full',
+  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'salary', 'bonus', 'allowance', 'other') DEFAULT 'full',
   `amount` DECIMAL(18,2) NOT NULL,
   `income_date` DATE NOT NULL,
   `received_date` DATE DEFAULT NULL,
@@ -378,7 +378,7 @@ CREATE TABLE IF NOT EXISTS `personal_expenses` (
   `account_id` INT DEFAULT NULL,
   `title` VARCHAR(200) NOT NULL,
   `client_name` VARCHAR(150) DEFAULT NULL,
-  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'other') DEFAULT 'full',
+  `payment_type` ENUM('advance', 'partial', 'remaining', 'full', 'monthly', 'salary', 'bonus', 'allowance', 'other') DEFAULT 'full',
   `amount` DECIMAL(18,2) NOT NULL,
   `expense_date` DATE NOT NULL,
   `payment_date` DATE DEFAULT NULL,

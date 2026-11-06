@@ -239,7 +239,7 @@ require_once ROOT_PATH . '/includes/header.php';
           <option value="">-- Select Business --</option>
           <?php foreach ($businesses as $b): ?>
             <option value="<?= $b['id'] ?>" <?= (isset($_GET['business_id']) && $_GET['business_id'] == $b['id']) ? 'selected' : '' ?>>
-              <?= htmlspecialchars($b['name']) ?> (<?= ($b['collection_model'] ?? 'direct') === 'direct' ? 'Direct Collection' : 'External' ?>)
+              <?= htmlspecialchars($b['name']) ?> (<?= ($b['collection_model'] ?? 'direct') === 'job' ? '💼 Job / Salary' : (($b['collection_model'] ?? 'direct') === 'direct' ? 'Direct Collection' : 'External') ?>)
             </option>
           <?php endforeach; ?>
         </select>
@@ -353,7 +353,7 @@ require_once ROOT_PATH . '/includes/header.php';
               </td>
               <td data-label="Type">
                 <?php if (!empty($r['is_retained'])): ?>
-                  <span class="badge badge-success" style="font-size: 11px;">🛡️ Retained (Direct)</span>
+                  <span class="badge badge-success" style="font-size: 11px;">🛡️ Retained (Direct/Job)</span>
                 <?php else: ?>
                   <span class="badge badge-primary" style="font-size: 11px;">💵 External Inflow</span>
                 <?php endif; ?>
@@ -392,7 +392,7 @@ function handleBusinessChange() {
   }
   
   const model = businessModels[bid] || 'direct';
-  if (model === 'direct') {
+  if (model === 'direct' || model === 'job') {
     banner.style.display = 'block';
     retainedField.value = '1';
     accHelp.innerText = 'For reference: Funds are already in this account from client payments. Will not duplicate cash.';
